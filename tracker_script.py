@@ -24,7 +24,7 @@ def get_wins_with_playwright():
             page = browser.new_page()
             
             # Nastavíme rozšířený timeout pro pomalejší GitHub Actions runner
-            page.set_default_timeout(30000) # 30 sekund
+            page.set_default_timeout(60000) # 30 sekund
             
             # Přejít na stránku
             page.goto(URL, wait_until="networkidle") 
