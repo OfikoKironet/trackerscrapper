@@ -1,0 +1,36 @@
+name: 🏆 BattleBit Tracker Scraper
+
+on:
+  schedule:
+    # Spustí každou půl hodinu (v 00 a 30 minut)
+    - cron: '0,30 * * * *' 
+  workflow_dispatch: # Umožní ruční spuštění
+
+jobs:
+  scrape_and_commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout kód repozitáře
+        uses: actions/checkout@v4
+
+      - name: 🐍 Nastav Python 3.x
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: 📦 Instaluj závislosti
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🚀 Spusť scraper a vytvoř JSON
+        run: python tracker_script.py
+
+      - name: 💾 Commit změněného JSON souboru
+        # Akce pro automatický commit změn
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'Auto update: Tracker wins data'
+          files: 'wins_data.json'
+          commit_user_name: GitHub Actions Bot
+          commit_user_email: actions@github.com
