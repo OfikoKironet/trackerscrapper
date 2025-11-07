@@ -1,16 +1,14 @@
-name: 🏆 BattleBit Tracker Scraper (Playwright)
+name: 🏆 BattleBit Tracker Scraper (ScrapeOps API)
 
-# Spouštěj workflow každých 30 minut
 on:
   schedule:
     - cron: '0,30 * * * *' 
-  # Umožní ruční spuštění z GitHub UI
   workflow_dispatch:
 
 jobs:
   scrape_and_commit:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # Maximální čas pro celý job (kvůli Playwright)
+    timeout-minutes: 3 # Zkrátíme timeout, protože API volání je rychlejší
     steps:
       - name: ⬇️ Checkout kód repozitáře
         uses: actions/checkout@v4
@@ -20,23 +18,19 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: 📦 Instaluj Python závislosti (včetně Playwright)
+      - name: 📦 Instaluj Python závislosti
+        # Nainstaluje requests a beautifulsoup4
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: 🌐 Instaluj binární soubory prohlížeče pro Playwright
-        # Tento krok stáhne prohlížeč Chromium, který Python kód použije.
-        run: playwright install chromium
 
       - name: 🚀 Spusť scraper a vytvoř JSON
         run: python tracker_script.py
         
       - name: 💾 Commit změněného JSON souboru
-        # Tato akce se postará o commit a push změn zpět do repozitáře
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 'Auto update: Tracker wins data (Playwright)'
+          commit_message: 'Auto update: Tracker wins data (ScrapeOps)'
           files: 'wins_data.json'
           commit_user_name: GitHub Actions Bot
           commit_user_email: actions@github.com
