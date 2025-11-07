@@ -1,59 +1,47 @@
+import requests
+from bs4 import BeautifulSoup
 import json
 from datetime import datetime
 import sys
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
 
-# 1. URL a cílové statistiky
+# ✅ VÁŠ API KLÍČ ZE SCRAPEOPS
+SCRAPEOPS_API_KEY = "61dc2fc0-9e66-4ad8-bc59-4f5dc0c42a1c" 
+
 URL = "https://tracker.gg/bf6/profile/3186869623/modes"
 TARGET_STATS = {
-    # Hledáme řádky podle atributu data-key pro parsování
     "BR Quads": "br_quads_wins",
     "BR Duos": "br_duo_quads_wins"
 }
 OUTPUT_FILE = "wins_data.json"
 
-def get_wins_with_playwright():
-    """Použije Playwright k načtení dynamického obsahu a vrátí HTML."""
-    print("Spouštím headless prohlížeč (Playwright) pro získání HTML...")
+def get_wins_from_api():
+    """Použije ScrapeOps API s JS vykreslováním k načtení stránky a vrátí HTML."""
+    
+    payload = {
+        'api_key': SCRAPEOPS_API_KEY,
+        'url': URL,
+        'bypass': 'js_rendering', 
+        'wait_for_selector': 'tr[data-key="BR Quads"]', 
+        'timeout': '60000',
+    }
+
+    print(f"Volám ScrapeOps API pro stažení {URL}...")
     
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch()
-            page = browser.new_page()
-            
-            # Zvýšit celkový timeout pro všechny operace na 60 sekund
-            page.set_default_timeout(60000) 
-            
-            # Přejít na stránku, čekat jen na základní obsah (domcontentloaded)
-            print(f"Naviguji na {URL} s wait_until=domcontentloaded a timeoutem 60s...")
-            page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-            
-            # Dáme 20 sekund na spuštění JavaScriptu a vykreslení tabulky
-            print("Čekám 20 sekund na vykreslení JavaScriptu...")
-            page.wait_for_timeout(20000) 
-            
-            # NOVÁ STRATEGIE: Čekáme na viditelný text 'BR Quads'
-            print("Čekám na viditelný text 'BR Quads' (30s timeout pro ověření)...")
-            page.wait_for_selector('text="BR Quads"', timeout=30000) 
-            
-            # Získat obsah DOM po vykreslení JavaScriptu
-            content = page.content()
-            
-            browser.close()
-            print("HTML obsah úspěšně stažen po vykreslení JS.")
-            return content
-
-    except Exception as e:
-        print(f"Kritická chyba při spouštění Playwright nebo načítání stránky: {e}", file=sys.stderr)
+        response = requests.get('https://api.scrapeops.io/v1/scraper/get', params=payload, timeout=90)
+        response.raise_for_status() 
+        print("API volání úspěšné. Parsuji data...")
+        return response.content
+        
+    except requests.RequestException as e:
+        print(f"Kritická chyba při volání ScrapeOps API: {e}", file=sys.stderr)
         return None
 
 def parse_and_save():
-    """Získá data, parsuje je a uloží do JSONu."""
+    """Získá data z API, parsuje je a uloží do JSONu."""
     
-    html_content = get_wins_with_playwright()
+    html_content = get_wins_from_api()
     if not html_content:
-        # Skript nenašel žádný obsah, ponecháme starý JSON.
         print("Skript selhal při získávání obsahu.")
         return
 
@@ -63,26 +51,18 @@ def parse_and_save():
     total_wins = 0
     found_stats = 0
     
-    # Parsovací logika
     for stat_name, wins_key in TARGET_STATS.items():
         current_wins = 0
-        
-        # 1. Najdeme celou řádku tabulky pomocí atributu data-key (např. 'BR Quads')
         row = soup.find('tr', {'data-key': stat_name})
         
         if row:
-            # 2. Výhry jsou ve TŘETÍ buňce tabulky (td index 2)
             td_elements = row.find_all('td')
             
             if len(td_elements) > 2:
-                # Třetí td obsahuje hodnotu výher (10, 3, atd.)
                 wins_cell = td_elements[2]
-                
-                # 3. Získáme hodnotu uvnitř buňky
                 stat_value_element = wins_cell.select_one('span.stat-value span.truncate')
                 
                 if stat_value_element:
-                    # Odstraníme čárky, pokud by tam byly (i když by neměly být)
                     stat_value_str = stat_value_element.text.strip().replace(',', '')
                     
                     try:
@@ -90,17 +70,10 @@ def parse_and_save():
                         total_wins += current_wins
                         results[wins_key] = current_wins
                         found_stats += 1
-                        print(f"Nalezeno: {stat_name} = {current_wins} (z td index 2)")
+                        print(f"Nalezeno: {stat_name} = {current_wins}")
                     except ValueError:
                         print(f"Varování: Hodnota pro '{stat_name}' není platné číslo: '{stat_value_str}'", file=sys.stderr)
-                else:
-                    print(f"Varování: Nalezen řádek '{stat_name}', ale nedaří se najít hodnotu ('span.stat-value span.truncate').", file=sys.stderr)
-            else:
-                print(f"Varování: Řádek '{stat_name}' má méně než 3 buňky <td>. Data nebyla nalezena.", file=sys.stderr)
-        else:
-            print(f"Varování: Řádek tabulky s data-key='{stat_name}' nebyl na stránce nalezen.", file=sys.stderr)
 
-    # Uložení výsledků
     results['total_wins'] = total_wins
     results['last_updated'] = datetime.now().isoformat()
     
