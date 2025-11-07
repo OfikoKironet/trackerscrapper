@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 # 1. URL a cílové statistiky
 URL = "https://tracker.gg/bf6/profile/3186869623/modes"
 TARGET_STATS = {
-    # Hledáme řádky podle data-key
+    # Hledáme řádky podle atributu data-key pro parsování
     "BR Quads": "br_quads_wins",
     "BR Duos": "br_duo_quads_wins"
 }
@@ -25,7 +25,7 @@ def get_wins_with_playwright():
             # Zvýšit celkový timeout pro všechny operace na 60 sekund
             page.set_default_timeout(60000) 
             
-            # Přejít na stránku se sníženou náročností čekání (domcontentloaded)
+            # Přejít na stránku, čekat jen na základní obsah (domcontentloaded)
             print(f"Naviguji na {URL} s wait_until=domcontentloaded a timeoutem 60s...")
             page.goto(URL, wait_until="domcontentloaded", timeout=60000)
             
@@ -33,9 +33,9 @@ def get_wins_with_playwright():
             print("Čekám 20 sekund na vykreslení JavaScriptu...")
             page.wait_for_timeout(20000) 
             
-            # Čekáme na element tr s data-key, což je nejpřesnější selektor
-            print("Čekám na řádek tabulky s BR Quads (30s timeout)...")
-            page.wait_for_selector('tr[data-key="BR Quads"]', timeout=30000) 
+            # NOVÁ STRATEGIE: Čekáme na viditelný text 'BR Quads'
+            print("Čekám na viditelný text 'BR Quads' (30s timeout pro ověření)...")
+            page.wait_for_selector('text="BR Quads"', timeout=30000) 
             
             # Získat obsah DOM po vykreslení JavaScriptu
             content = page.content()
@@ -53,6 +53,7 @@ def parse_and_save():
     
     html_content = get_wins_with_playwright()
     if not html_content:
+        # Skript nenašel žádný obsah, ponecháme starý JSON.
         print("Skript selhal při získávání obsahu.")
         return
 
@@ -66,12 +67,11 @@ def parse_and_save():
     for stat_name, wins_key in TARGET_STATS.items():
         current_wins = 0
         
-        # 1. Najdeme celou řádku tabulky pomocí atributu data-key
+        # 1. Najdeme celou řádku tabulky pomocí atributu data-key (např. 'BR Quads')
         row = soup.find('tr', {'data-key': stat_name})
         
         if row:
-            # 2. Výhry jsou ve TŘETÍ buňce tabulky (index 2)
-            # <td> element je druhý po Td s názvem, který je sticky (index 0)
+            # 2. Výhry jsou ve TŘETÍ buňce tabulky (td index 2)
             td_elements = row.find_all('td')
             
             if len(td_elements) > 2:
@@ -82,6 +82,7 @@ def parse_and_save():
                 stat_value_element = wins_cell.select_one('span.stat-value span.truncate')
                 
                 if stat_value_element:
+                    # Odstraníme čárky, pokud by tam byly (i když by neměly být)
                     stat_value_str = stat_value_element.text.strip().replace(',', '')
                     
                     try:
