@@ -4,36 +4,48 @@ import json
 from datetime import datetime
 import sys
 
-# ✅ VÁŠ API KLÍČ ZE SCRAPEOPS
+# ✅ VÁŠ API KLÍČ ZE SCRAPEOPS (VLOŽEN ZDE)
 SCRAPEOPS_API_KEY = "61dc2fc0-9e66-4ad8-bc59-4f5dc0c42a1c" 
 
 URL = "https://tracker.gg/bf6/profile/3186869623/modes"
 TARGET_STATS = {
+    # Hledáme řádky podle atributu data-key pro parsování
     "BR Quads": "br_quads_wins",
     "BR Duos": "br_duo_quads_wins"
 }
 OUTPUT_FILE = "wins_data.json"
 
 def get_wins_from_api():
-    """Použije ScrapeOps API s JS vykreslováním k načtení stránky a vrátí HTML."""
+    """
+    Použije ScrapeOps API pro spolehlivé stažení stránky s JS vykreslováním.
+    Tato funkce používá opravený API endpoint /v1/scrape.
+    """
     
+    # Parametry pro ScrapeOps API
     payload = {
         'api_key': SCRAPEOPS_API_KEY,
         'url': URL,
-        'bypass': 'js_rendering', 
+        # Klíčové: Zapne vykreslování JavaScriptu (řeší dynamický obsah)
+        'render_js': 'true', 
+        # Počká na klíčový element, aby se zaručilo, že se tabulka načetla
         'wait_for_selector': 'tr[data-key="BR Quads"]', 
+        # Dává ScrapeOps 60 sekund na načtení stránky
         'timeout': '60000',
     }
 
     print(f"Volám ScrapeOps API pro stažení {URL}...")
     
     try:
-        response = requests.get('https://api.scrapeops.io/v1/scraper/get', params=payload, timeout=90)
+        # ✅ OPRAVENÝ ENDPOINT: /v1/scrape
+        response = requests.get('https://api.scrapeops.io/v1/scrape', params=payload, timeout=90)
+        
+        # Kontrola, zda volání vrátilo stav 200 (OK)
         response.raise_for_status() 
         print("API volání úspěšné. Parsuji data...")
         return response.content
         
     except requests.RequestException as e:
+        # Zaloguje chybu (včetně chyb 404, 403, 429 atd.)
         print(f"Kritická chyba při volání ScrapeOps API: {e}", file=sys.stderr)
         return None
 
@@ -51,11 +63,15 @@ def parse_and_save():
     total_wins = 0
     found_stats = 0
     
+    # Parsovací logika
     for stat_name, wins_key in TARGET_STATS.items():
         current_wins = 0
+        
+        # 1. Najdeme celou řádku tabulky pomocí atributu data-key
         row = soup.find('tr', {'data-key': stat_name})
         
         if row:
+            # 2. Výhry jsou ve TŘETÍ buňce tabulky (index 2)
             td_elements = row.find_all('td')
             
             if len(td_elements) > 2:
@@ -74,6 +90,7 @@ def parse_and_save():
                     except ValueError:
                         print(f"Varování: Hodnota pro '{stat_name}' není platné číslo: '{stat_value_str}'", file=sys.stderr)
 
+    # Uložení výsledků
     results['total_wins'] = total_wins
     results['last_updated'] = datetime.now().isoformat()
     
