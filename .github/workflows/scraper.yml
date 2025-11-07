@@ -1,15 +1,16 @@
 name: 🏆 BattleBit Tracker Scraper (Playwright)
 
+# Spouštěj workflow každých 30 minut
 on:
   schedule:
-    # Spustí každou půl hodinu. Playwright běh může být pomalejší.
     - cron: '0,30 * * * *' 
+  # Umožní ruční spuštění z GitHub UI
   workflow_dispatch:
 
 jobs:
   scrape_and_commit:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # Nastavíme vyšší timeout, aby se Playwright stihl spustit
+    timeout-minutes: 5 # Maximální čas pro celý job (kvůli Playwright)
     steps:
       - name: ⬇️ Checkout kód repozitáře
         uses: actions/checkout@v4
@@ -25,13 +26,14 @@ jobs:
           pip install -r requirements.txt
 
       - name: 🌐 Instaluj binární soubory prohlížeče pro Playwright
-        # Toto je klíčový krok pro Playwright
+        # Tento krok stáhne prohlížeč Chromium, který Python kód použije.
         run: playwright install chromium
 
       - name: 🚀 Spusť scraper a vytvoř JSON
         run: python tracker_script.py
         
       - name: 💾 Commit změněného JSON souboru
+        # Tato akce se postará o commit a push změn zpět do repozitáře
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'Auto update: Tracker wins data (Playwright)'
