@@ -7,8 +7,9 @@ from bs4 import BeautifulSoup
 # 1. URL a cílové statistiky
 URL = "https://tracker.gg/bf6/profile/3186869623/modes"
 TARGET_STATS = {
-    "BR Quads Wins": "br_quads_wins",
-    "BR Duo Quads Wins": "br_duo_quads_wins"
+    # Hledáme řádky podle data-key
+    "BR Quads": "br_quads_wins",
+    "BR Duos": "br_duo_quads_wins"
 }
 OUTPUT_FILE = "wins_data.json"
 
@@ -28,13 +29,13 @@ def get_wins_with_playwright():
             print(f"Naviguji na {URL} s wait_until=domcontentloaded a timeoutem 60s...")
             page.goto(URL, wait_until="domcontentloaded", timeout=60000)
             
-            # Dáme 20 sekund na spuštění JavaScriptu a vykreslení statistik
+            # Dáme 20 sekund na spuštění JavaScriptu a vykreslení tabulky
             print("Čekám 20 sekund na vykreslení JavaScriptu...")
-            page.wait_for_timeout(20000) # Čekání 20000 ms
+            page.wait_for_timeout(20000) 
             
-            # ZVÝŠENÝ TIMEOUT: Čekáme na element div.stats-card až 30 sekund
-            print("Čekám na element div.stats-card (30s timeout)...")
-            page.wait_for_selector('div.stats-card', timeout=30000) 
+            # Čekáme na element tr s data-key, což je nejpřesnější selektor
+            print("Čekám na řádek tabulky s BR Quads (30s timeout)...")
+            page.wait_for_selector('tr[data-key="BR Quads"]', timeout=30000) 
             
             # Získat obsah DOM po vykreslení JavaScriptu
             content = page.content()
@@ -52,7 +53,6 @@ def parse_and_save():
     
     html_content = get_wins_with_playwright()
     if not html_content:
-        # Skript nenašel žádný obsah, ponecháme starý JSON.
         print("Skript selhal při získávání obsahu.")
         return
 
@@ -66,15 +66,20 @@ def parse_and_save():
     for stat_name, wins_key in TARGET_STATS.items():
         current_wins = 0
         
-        name_element = soup.find('div', class_='stats-card__title', 
-                                 string=lambda t: t and stat_name.lower() in t.lower())
+        # 1. Najdeme celou řádku tabulky pomocí atributu data-key
+        row = soup.find('tr', {'data-key': stat_name})
         
-        if name_element:
-            card = name_element.find_parent('div', class_='stats-card')
+        if row:
+            # 2. Výhry jsou ve TŘETÍ buňce tabulky (index 2)
+            # <td> element je druhý po Td s názvem, který je sticky (index 0)
+            td_elements = row.find_all('td')
             
-            if card:
-                # Přesný selektor pro hodnotu: span.stat-value vnořený span.truncate
-                stat_value_element = card.select_one('span.stat-value span.truncate')
+            if len(td_elements) > 2:
+                # Třetí td obsahuje hodnotu výher (10, 3, atd.)
+                wins_cell = td_elements[2]
+                
+                # 3. Získáme hodnotu uvnitř buňky
+                stat_value_element = wins_cell.select_one('span.stat-value span.truncate')
                 
                 if stat_value_element:
                     stat_value_str = stat_value_element.text.strip().replace(',', '')
@@ -84,15 +89,15 @@ def parse_and_save():
                         total_wins += current_wins
                         results[wins_key] = current_wins
                         found_stats += 1
-                        print(f"Nalezeno: {stat_name} = {current_wins}")
+                        print(f"Nalezeno: {stat_name} = {current_wins} (z td index 2)")
                     except ValueError:
                         print(f"Varování: Hodnota pro '{stat_name}' není platné číslo: '{stat_value_str}'", file=sys.stderr)
                 else:
-                    print(f"Varování: Nalezen název '{stat_name}', ale nedaří se najít jeho hodnotu ('span.stat-value span.truncate').", file=sys.stderr)
+                    print(f"Varování: Nalezen řádek '{stat_name}', ale nedaří se najít hodnotu ('span.stat-value span.truncate').", file=sys.stderr)
             else:
-                print(f"Varování: Nedaří se najít rodičovskou kartu ('stats-card') pro '{stat_name}'.", file=sys.stderr)
+                print(f"Varování: Řádek '{stat_name}' má méně než 3 buňky <td>. Data nebyla nalezena.", file=sys.stderr)
         else:
-            print(f"Varování: Statistiky '{stat_name}' nebyly na stránce nalezeny.", file=sys.stderr)
+            print(f"Varování: Řádek tabulky s data-key='{stat_name}' nebyl na stránce nalezen.", file=sys.stderr)
 
     # Uložení výsledků
     results['total_wins'] = total_wins
