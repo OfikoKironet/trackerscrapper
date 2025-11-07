@@ -16,41 +16,48 @@ def get_wins():
     """Stáhne web, parsuje cílové statistiky a vrátí slovník s výsledky."""
     print(f"Stahuji data z: {URL}")
     
+    # NOVÉ HLAVIČKY: Detailní User-Agent a další hlavičky pro simulaci Chrome prohlížeče
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'cs-CZ,cs;q=0.8,en-US;q=0.5,en;q=0.3',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
     }
     
     try:
         response = requests.get(URL, headers=headers, timeout=15)
-        response.raise_for_status() 
+        response.raise_for_status() # Vyvolá HTTPError, pokud kód není 200 (včetně 403)
+        print("Stahování úspěšné. Parsuji data...")
     except requests.RequestException as e:
-        print(f"Chyba při stahování URL: {e}", file=sys.stderr)
+        print(f"Chyba při stahování URL: {e}. Tracker.gg zřejmě blokuje bota.", file=sys.stderr)
         return None
 
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    # Slovník pro ukládání výsledků (wins_key: value)
     results = {} 
     total_wins = 0
     found_stats = 0
     
-    # Procházení každé cílové statistiky
     for stat_name, wins_key in TARGET_STATS.items():
-        # 1. Najdeme název statistiky na stránce
-        name_element = soup.find('div', class_='stats-card__title', string=lambda t: t and stat_name.lower() in t.lower())
-        
         current_wins = 0
         
+        # 1. Hledáme název statistiky: div.stats-card__title obsahující cílový text
+        # Hledáme bez ohledu na velikost písmen (lower())
+        name_element = soup.find('div', class_='stats-card__title', 
+                                 string=lambda t: t and stat_name.lower() in t.lower())
+        
         if name_element:
-            # 2. Najdeme rodičovskou kartu (stat-card)
+            # 2. Najdeme rodičovskou kartu pro kontext
             card = name_element.find_parent('div', class_='stats-card')
             
             if card:
                 # 3. Přesný selektor pro hodnotu: span.stat-value vnořený span.truncate
+                # Tento selektor odpovídá HTML struktuře, kterou jsi poslal
                 stat_value_element = card.select_one('span.stat-value span.truncate')
                 
                 if stat_value_element:
-                    # Získání hodnoty a úprava (odstranění čárek)
                     stat_value_str = stat_value_element.text.strip().replace(',', '')
                     
                     try:
@@ -62,7 +69,7 @@ def get_wins():
                     except ValueError:
                         print(f"Varování: Hodnota pro '{stat_name}' není platné číslo: '{stat_value_str}'", file=sys.stderr)
                 else:
-                    print(f"Varování: Nalezen název '{stat_name}', ale nedaří se najít jeho hodnotu (selektor 'span.stat-value span.truncate').", file=sys.stderr)
+                    print(f"Varování: Nalezen název '{stat_name}', ale nedaří se najít jeho hodnotu ('span.stat-value span.truncate').", file=sys.stderr)
             else:
                 print(f"Varování: Nedaří se najít rodičovskou kartu ('stats-card') pro '{stat_name}'.", file=sys.stderr)
         else:
@@ -75,14 +82,13 @@ def get_wins():
     if found_stats > 0:
         return results
     else:
-        # Vracíme None, pokud nebylo nic nalezeno, aby se JSON neaktualizoval s nulovými hodnotami
+        # Vracíme None, pokud nebylo nic nalezeno
         return None 
 
 def main():
     results = get_wins()
     
     if results is not None:
-        # 4. Uložení JSONu
         try:
             with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=4, ensure_ascii=False) 
@@ -90,7 +96,7 @@ def main():
         except IOError as e:
             print(f"Chyba při ukládání souboru {OUTPUT_FILE}: {e}", file=sys.stderr)
     else:
-        print("Skript selhal při získávání dat. JSON nebyl aktualizován, zůstávají staré hodnoty.")
+        print("Skript selhal při získávání dat. JSON nebyl aktualizován.")
 
 if __name__ == "__main__":
     main()
