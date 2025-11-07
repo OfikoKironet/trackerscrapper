@@ -1,7 +1,6 @@
 import json
 from datetime import datetime
 import sys
-# Import Playwright pro asynchronní spuštění prohlížeče
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 
@@ -19,25 +18,23 @@ def get_wins_with_playwright():
     
     try:
         with sync_playwright() as p:
-            # Spustit prohlížeč Chromium (jako skutečný Chrome)
             browser = p.chromium.launch()
             page = browser.new_page()
             
-            # 1. Zvýšit celkový timeout pro všechny operace na 60 sekund
+            # Zvýšit celkový timeout pro všechny operace na 60 sekund
             page.set_default_timeout(60000) 
             
-            # Přejít na stránku se sníženou náročností čekání, jen na základní obsah (domcontentloaded)
+            # Přejít na stránku se sníženou náročností čekání (domcontentloaded)
             print(f"Naviguji na {URL} s wait_until=domcontentloaded a timeoutem 60s...")
             page.goto(URL, wait_until="domcontentloaded", timeout=60000)
             
-            # NOVÉ ČEKÁNÍ: Dáme 20 sekund na spuštění JavaScriptu a vykreslení statistik
+            # Dáme 20 sekund na spuštění JavaScriptu a vykreslení statistik
             print("Čekám 20 sekund na vykreslení JavaScriptu...")
             page.wait_for_timeout(20000) # Čekání 20000 ms
             
-            # Důležité: Počkat na načtení klíčového elementu, abychom zkontrolovali, že se vykreslil
-            print("Čekám na element div.stats-card...")
-            # Ponecháme kratší timeout pro tento element, jelikož by se měl objevit po 20s
-            page.wait_for_selector('div.stats-card', timeout=15000) 
+            # ZVÝŠENÝ TIMEOUT: Čekáme na element div.stats-card až 30 sekund
+            print("Čekám na element div.stats-card (30s timeout)...")
+            page.wait_for_selector('div.stats-card', timeout=30000) 
             
             # Získat obsah DOM po vykreslení JavaScriptu
             content = page.content()
@@ -55,6 +52,8 @@ def parse_and_save():
     
     html_content = get_wins_with_playwright()
     if not html_content:
+        # Skript nenašel žádný obsah, ponecháme starý JSON.
+        print("Skript selhal při získávání obsahu.")
         return
 
     soup = BeautifulSoup(html_content, 'html.parser')
