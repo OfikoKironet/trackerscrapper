@@ -5,11 +5,12 @@ from datetime import datetime
 import sys
 
 # ✅ VÁŠ API KLÍČ ZE SCRAPEOPS (VLOŽEN ZDE)
+# Zůstáváme u klíče, který jste zadal.
 SCRAPEOPS_API_KEY = "61dc2fc0-9e66-4ad8-bc59-4f5dc0c42a1c" 
 
 URL = "https://tracker.gg/bf6/profile/3186869623/modes"
 TARGET_STATS = {
-    # Hledáme řádky podle atributu data-key pro parsování
+    # Cílové řádky tabulky podle atributu data-key
     "BR Quads": "br_quads_wins",
     "BR Duos": "br_duo_quads_wins"
 }
@@ -17,35 +18,32 @@ OUTPUT_FILE = "wins_data.json"
 
 def get_wins_from_api():
     """
-    Použije ScrapeOps API pro spolehlivé stažení stránky s JS vykreslováním.
-    Tato funkce používá opravený API endpoint /v1/scrape.
+    Používá ScrapeOps API pro stažení stránky.
+    Zjednodušené volání pro maximální kompatibilitu a minimalizaci chyb 404.
     """
     
-    # Parametry pro ScrapeOps API
+    # NOVÉ, ZJEDNODUŠENÉ PARAMETRY PRO ZÁKLADNÍ VOLÁNÍ
     payload = {
         'api_key': SCRAPEOPS_API_KEY,
         'url': URL,
-        # Klíčové: Zapne vykreslování JavaScriptu (řeší dynamický obsah)
+        # Pouze základní parametr pro JS vykreslování
         'render_js': 'true', 
-        # Počká na klíčový element, aby se zaručilo, že se tabulka načetla
-        'wait_for_selector': 'tr[data-key="BR Quads"]', 
-        # Dává ScrapeOps 60 sekund na načtení stránky
-        'timeout': '60000',
     }
 
     print(f"Volám ScrapeOps API pro stažení {URL}...")
     
     try:
-        # ✅ OPRAVENÝ ENDPOINT: /v1/scrape
+        # Používáme oficiální URL /scrape
+        # Timeout volání requests je nastaven na 90 sekund
         response = requests.get('https://api.scrapeops.io/v1/scrape', params=payload, timeout=90)
         
-        # Kontrola, zda volání vrátilo stav 200 (OK)
+        # Kontrola, zda volání vrátilo stav 200 (OK). V opačném případě vyvolá chybu.
         response.raise_for_status() 
         print("API volání úspěšné. Parsuji data...")
         return response.content
         
     except requests.RequestException as e:
-        # Zaloguje chybu (včetně chyb 404, 403, 429 atd.)
+        # Zaloguje chybu (např. 403, 404, timeout)
         print(f"Kritická chyba při volání ScrapeOps API: {e}", file=sys.stderr)
         return None
 
@@ -76,6 +74,8 @@ def parse_and_save():
             
             if len(td_elements) > 2:
                 wins_cell = td_elements[2]
+                
+                # 3. Získáme hodnotu uvnitř buňky
                 stat_value_element = wins_cell.select_one('span.stat-value span.truncate')
                 
                 if stat_value_element:
