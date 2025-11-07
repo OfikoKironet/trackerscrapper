@@ -23,15 +23,17 @@ def get_wins_with_playwright():
             browser = p.chromium.launch()
             page = browser.new_page()
             
-            # Nastavíme rozšířený timeout pro pomalejší GitHub Actions runner
-            page.set_default_timeout(60000) # 30 sekund
+            # 1. Zvýšit celkový timeout pro všechny operace na 60 sekund
+            page.set_default_timeout(60000) 
             
-            # Přejít na stránku
-            page.goto(URL, wait_until="networkidle") 
+            # Přejít na stránku se zvýšeným timeoutem na 60 sekund pro toto volání
+            # Čekáme na "networkidle", což znamená, že síťová aktivita utichla
+            print(f"Naviguji na {URL} s timeoutem 60s...")
+            page.goto(URL, wait_until="networkidle", timeout=60000) 
             
             # Důležité: Počkat na načtení klíčového elementu, abychom zaručili, že JS data jsou viditelná.
-            # Předpokládáme, že div.stats-card se objeví, až když se načtou statistiky.
-            page.wait_for_selector('div.stats-card') 
+            print("Čekám na element div.stats-card...")
+            page.wait_for_selector('div.stats-card', timeout=30000) # Mělo by být rychlé
             
             # Získat obsah DOM po vykreslení JavaScriptu
             content = page.content()
@@ -57,7 +59,7 @@ def parse_and_save():
     total_wins = 0
     found_stats = 0
     
-    # Standardní parsovací logika (stejná jako dříve, ale nyní pracuje s JS vykresleným HTML)
+    # Parsovací logika
     for stat_name, wins_key in TARGET_STATS.items():
         current_wins = 0
         
@@ -68,7 +70,7 @@ def parse_and_save():
             card = name_element.find_parent('div', class_='stats-card')
             
             if card:
-                # Selektor pro hodnotu: span.stat-value vnořený span.truncate
+                # Přesný selektor pro hodnotu: span.stat-value vnořený span.truncate
                 stat_value_element = card.select_one('span.stat-value span.truncate')
                 
                 if stat_value_element:
