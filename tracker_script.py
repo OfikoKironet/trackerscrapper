@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 from datetime import datetime
-import os
+import sys
 
 # 1. URL a cílové statistiky
 URL = "https://tracker.gg/bf6/profile/3186869623/modes"
@@ -22,7 +22,7 @@ def get_wins():
         response = requests.get(URL, headers=headers, timeout=15)
         response.raise_for_status() # Vyvolá HTTPError pro špatné kódy (4xx nebo 5xx)
     except requests.RequestException as e:
-        print(f"Chyba při stahování URL: {e}")
+        print(f"Chyba při stahování URL: {e}", file=sys.stderr)
         return None
 
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -30,64 +30,68 @@ def get_wins():
     total_wins = 0
     found_stats = 0
     
-    # 2. Hledání statistik
-    # Všechny statistiky jsou v sekcích, které je třeba prohledat
-    # Předpokládáme, že struktura je Card > Stat Name + Value
+    # Robustnější hledání statistik: 
+    # Hledáme div s třídou 'stats-card__title', který obsahuje cílový text.
     
-    # Selektor pro všechny statistické karty, které jsou na stránce
-    stat_cards = soup.select('div.stats-card') 
-    
-    if not stat_cards:
-        print("Chyba: Nebyly nalezeny žádné statistické karty (selektor 'div.stats-card'). Struktura stránky se možná změnila.")
-        return None
-
-    for card in stat_cards:
-        # Název statistiky je v elementu, který je obvykle první Child
-        stat_name_element = card.select_one('div.stats-card__title')
-        # Hodnota statistiky je v elementu, který je obvykle druhý Child
-        stat_value_element = card.select_one('div.stats-card__value')
+    for stat_name in TARGET_STATS:
+        # Hledáme element 'div' s třídou 'stats-card__title', který má ve svém textu název statistiky
+        name_element = soup.find('div', class_='stats-card__title', string=lambda t: t and stat_name.lower() in t.lower())
         
-        if stat_name_element and stat_value_element:
-            stat_name = stat_name_element.text.strip()
+        if name_element:
+            # Hodnota je obvykle v sousedním divu, nebo jako sourozenec k názvu, 
+            # ale nejspolehlivější je jít k rodičovské 'card' a tam hledat hodnotu.
+            card = name_element.find_parent('div', class_='stats-card')
             
-            if stat_name in TARGET_STATS:
-                # Ostranění čárky pro správný převod na číslo (např. '1,500' -> '1500')
-                stat_value_str = stat_value_element.text.strip().replace(',', '')
+            if card:
+                # Najdi hodnotu v divu s třídou 'stats-card__value' uvnitř dané karty
+                stat_value_element = card.select_one('div.stats-card__value')
                 
-                try:
-                    wins = int(stat_value_str)
-                    total_wins += wins
-                    found_stats += 1
-                    print(f"Nalezeno: {stat_name} = {wins}")
-                except ValueError:
-                    print(f"Varování: Hodnota pro '{stat_name}' není platné číslo: '{stat_value_str}'")
-    
+                if stat_value_element:
+                    # Ostranění čárky pro správný převod na číslo (např. '1,500' -> '1500')
+                    stat_value_str = stat_value_element.text.strip().replace(',', '')
+                    
+                    try:
+                        wins = int(stat_value_str)
+                        total_wins += wins
+                        found_stats += 1
+                        print(f"Nalezeno: {stat_name} = {wins}")
+                    except ValueError:
+                        print(f"Varování: Hodnota pro '{stat_name}' není platné číslo: '{stat_value_str}'", file=sys.stderr)
+                else:
+                    print(f"Varování: Nalezen název '{stat_name}', ale nedaří se najít jeho hodnotu ('stats-card__value').", file=sys.stderr)
+            else:
+                print(f"Varování: Nedaří se najít rodičovskou kartu ('stats-card') pro '{stat_name}'.", file=sys.stderr)
+        else:
+            print(f"Varování: Statistiky '{stat_name}' nebyly na stránce nalezeny.", file=sys.stderr)
+            
     if found_stats != len(TARGET_STATS):
-        print(f"Varování: Podařilo se najít pouze {found_stats} z {len(TARGET_STATS)} cílových statistik. Součet může být neúplný.")
-        
+        print(f"Upozornění: Podařilo se najít pouze {found_stats} z {len(TARGET_STATS)} cílových statistik. Součet může být neúplný.", file=sys.stderr)
+
+    # Vrátí součet, i když je 0 (pokud by se nic nenašlo)
     return total_wins
 
 def main():
     wins = get_wins()
     
+    # Kontrola, zda se data podařilo získat (není None, vrací se None při HTTP chybě)
     if wins is not None:
-        # 3. Vytvoření JSONu
+        # Vytvoření JSONu
         data = {
             "total_wins": wins,
-            "br_quads_wins": None, # Můžeš přidat detaily, pokud chceš
-            "br_duo_quads_wins": None, # Můžeš přidat detaily, pokud chceš
             "last_updated": datetime.now().isoformat()
         }
         
-        # 4. Uložení JSONu
+        # Uložení JSONu
         try:
             with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4)
+                # Použijeme ensure_ascii=False pro správné české znaky, pokud by byly potřeba
+                json.dump(data, f, indent=4, ensure_ascii=False) 
             print(f"Data úspěšně uložena do {OUTPUT_FILE}: Total Wins = {wins}")
         except IOError as e:
-            print(f"Chyba při ukládání souboru {OUTPUT_FILE}: {e}")
+            print(f"Chyba při ukládání souboru {OUTPUT_FILE}: {e}", file=sys.stderr)
     else:
-        print("Skript selhal, JSON nebyl vytvořen.")
+        # Pokud se nepodařilo získat data, nebudeme přepisovat JSON, aby zůstaly staré hodnoty
+        print("Skript selhal při získávání dat. JSON nebyl aktualizován.")
 
 
 if __name__ == "__main__":
