@@ -26,14 +26,18 @@ def get_wins_with_playwright():
             # 1. Zvýšit celkový timeout pro všechny operace na 60 sekund
             page.set_default_timeout(60000) 
             
-            # Přejít na stránku se zvýšeným timeoutem na 60 sekund pro toto volání
-            # Čekáme na "networkidle", což znamená, že síťová aktivita utichla
-            print(f"Naviguji na {URL} s timeoutem 60s...")
-            page.goto(URL, wait_until="networkidle", timeout=60000) 
+            # Přejít na stránku se sníženou náročností čekání, jen na základní obsah (domcontentloaded)
+            print(f"Naviguji na {URL} s wait_until=domcontentloaded a timeoutem 60s...")
+            page.goto(URL, wait_until="domcontentloaded", timeout=60000)
             
-            # Důležité: Počkat na načtení klíčového elementu, abychom zaručili, že JS data jsou viditelná.
+            # NOVÉ ČEKÁNÍ: Dáme 20 sekund na spuštění JavaScriptu a vykreslení statistik
+            print("Čekám 20 sekund na vykreslení JavaScriptu...")
+            page.wait_for_timeout(20000) # Čekání 20000 ms
+            
+            # Důležité: Počkat na načtení klíčového elementu, abychom zkontrolovali, že se vykreslil
             print("Čekám na element div.stats-card...")
-            page.wait_for_selector('div.stats-card', timeout=30000) # Mělo by být rychlé
+            # Ponecháme kratší timeout pro tento element, jelikož by se měl objevit po 20s
+            page.wait_for_selector('div.stats-card', timeout=15000) 
             
             # Získat obsah DOM po vykreslení JavaScriptu
             content = page.content()
